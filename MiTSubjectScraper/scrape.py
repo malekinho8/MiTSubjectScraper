@@ -36,11 +36,11 @@ def check_course_exists_in_dataframe(course_number, term, year, df):
     # 1. Convert the course number to the format used in the dataframe
     course_number = f'="{course_number}"'
 
-    # 2. Check if the course number exists in the dataframe already
+    # 2. Check if the course number, year, and term exists in the dataframe already
     if course_number in df['Course Number'].values:
         # 2.1 Get the row of the course, that is, where the course number, term, and year match
         course_rows = df.loc[df['Course Number'] == course_number]
-        course_row = course_rows.loc[(course_rows['Term'] == term) & (course_rows['Year'] == year)]
+        course_row = course_rows.loc[(course_rows['Term'] == term) & (course_rows['Year'] == year)] if len(course_rows) > 1 else course_rows
 
         # 2.2 Check if the term and year match
         if course_row['Term'].values[0] == term and course_row['Year'].values[0] == year:
