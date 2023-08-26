@@ -11,6 +11,7 @@ import os
 import numpy as np
 import math
 from bs4 import BeautifulSoup, Tag
+from catalog_mapping import course_names
 
 # 1. Initialization
 CSV_FOLDER_PATH = "course_csv_info"
@@ -18,6 +19,7 @@ SUBJECT_NUMBER = 2
 SUBJECT_NUMBER = str(SUBJECT_NUMBER)
 BASE_URL = "https://eduapps.mit.edu/ose-rpt/"
 SUBJECT_URL_SUFFIX = f"subjectEvaluationSearch.htm?termId=&departmentId=+++{SUBJECT_NUMBER}&subjectCode=&instructorName=&search=Search"
+MIT_CATALOG_BASE_URL = "http://catalog.mit.edu/subjects/"
 subject_url = BASE_URL + SUBJECT_URL_SUFFIX
 
 # Load browser cookies
@@ -26,9 +28,24 @@ cookies = browser_cookie3.firefox()
 # Start a session for requests
 session = requests.Session()
 
-def check_course_exists_in_dataframe(course_number, df):
+def check_course_exists_in_dataframe(course_number, term, year, df):
     """Check if a course exists in the dataframe based on its course number."""
-    return course_number in df['Course Number'].values
+    # 0. Initialize the output variable
+    output_condition = False
+
+    # 1. Convert the course number to the format used in the dataframe
+    course_number = f'="{course_number}"'
+
+    # 2. Check if the course number exists in the dataframe already
+    if course_number in df['Course Number'].values:
+        # 2.1 Get the row of the course
+        course_row = df.loc[df['Course Number'] == course_number]
+
+        # 2.2 Check if the term and year match
+        if course_row['Term'].values[0] == term and course_row['Year'].values[0] == year:
+            output_condition = True
+
+    return output_condition
 
 def get_page_format(course_soup):
     """Determine the format of the course page."""
@@ -57,27 +74,31 @@ def get_page_format(course_soup):
 def get_subject_rating_new_format(course_soup):
     try:
         subject_mean = float(course_soup.find_all('p')[4].get_text().replace('\xa0',' ').replace('\t','').replace('\n','').replace('\r','').split('subject: ')[1].split(' ')[0])
-    except NameError:
+    except (NameError, ValueError):
         subject_mean = np.nan
     try:
         subject_std = float(str(course_soup).split('Overall rating of the subject')[1].split('width="50">')[1].split('</td>')[0])
-    except NameError:
+    except (NameError, ValueError):
         subject_std = np.nan
     
     return subject_mean, subject_std
 
 def get_teacher_data_new_format(course_soup):
-    teacher_row_data = course_soup.find('table', class_='grid').find_all('tr')[2:]
-    teacher_data = {'teacher name':[], 'teacher rating':[], 'teacher help':[], 'number of votes':[]}
-    for table_row in teacher_row_data:
-        teacher_name = ' '.join(table_row.find_all('td')[0].get_text().replace('\xa0',' ').replace('\t','').replace('\n','').replace('\r','').split(', ')[0:2][::-1])
-        teacher_help = float(table_row.find_all('td')[-2].get_text().split(' ')[0])
-        teacher_rating = float(table_row.find_all('td')[-1].get_text().split(' ')[0])
-        num_votes = int(table_row.find_all('td')[-1].get_text().split(' ')[-1].split('(')[1].split(')')[0])
-        teacher_data['teacher name'].append(teacher_name)
-        teacher_data['teacher rating'].append(teacher_rating)
-        teacher_data['teacher help'].append(teacher_help)
-        teacher_data['number of votes'].append(num_votes)
+    try:
+        teacher_row_data = course_soup.find('table', class_='grid').find_all('tr')[2:]
+        teacher_data = {'teacher name':[], 'teacher rating':[], 'teacher help':[], 'number of votes':[]}
+        for table_row in teacher_row_data:
+            teacher_name = ' '.join(table_row.find_all('td')[0].get_text().replace('\xa0',' ').replace('\t','').replace('\n','').replace('\r','').split(', ')[0:2][::-1])
+            teacher_help = float(table_row.find_all('td')[-2].get_text().split(' ')[0])
+            teacher_rating = float(table_row.find_all('td')[-1].get_text().split(' ')[0])
+            num_votes = int(table_row.find_all('td')[-1].get_text().split(' ')[-1].split('(')[1].split(')')[0])
+            teacher_data['teacher name'].append(teacher_name)
+            teacher_data['teacher rating'].append(teacher_rating)
+            teacher_data['teacher help'].append(teacher_help)
+            teacher_data['number of votes'].append(num_votes)
+    except AttributeError:
+        # if there are no teachers, append np.nan to all the lists
+        teacher_data = {'teacher name':[np.nan], 'teacher rating':[np.nan], 'teacher help':[np.nan], 'number of votes':[np.nan]}
 
     return teacher_data
 
@@ -92,7 +113,7 @@ def combine_distributions(mean1, std1, n1, mean2, std2, n2):
     combined_variance = (n1 * std1**2 + n2 * std2**2 + n1 * (mean1 - combined_mean)**2 + n2 * (mean2 - combined_mean)**2) / combined_weight
 
     # Calculate the combined standard deviation
-    combined_std = math.sqrt(combined_variance)
+    combined_std = np.sqrt(combined_variance)
 
     return combined_mean, combined_std, combined_weight
 
@@ -113,12 +134,12 @@ def add_teacher_data_to_df(professor_df, teacher_dict):
             professor_df = pd.concat([professor_df,new_df], ignore_index=True)
         else:
             # 2.2 Get the current teacher's rating, helpfulness, and number of ratings
-            current_teacher_rating = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Rating (Avg)']
-            current_teacher_rating_std = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Rating (STD)']
-            current_teacher_help = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Helpfulness (Avg)']
-            current_teacher_help_std = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Helpfulness (STD)']
-            current_num_ratings = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Number of Ratings']
-            current_num_classes = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Number of Classes']
+            current_teacher_rating = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Rating (Avg)'].values[0]
+            current_teacher_rating_std = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Rating (STD)'].values[0]
+            current_teacher_help = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Helpfulness (Avg)'].values[0]
+            current_teacher_help_std = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Helpfulness (STD)'].values[0]
+            current_num_ratings = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Number of Ratings'].values[0]
+            current_num_classes = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Number of Classes'].values[0]
 
             # 3. Update the teacher's rating, helpfulness, and number of ratings
             # 3.1 Get the delta values
@@ -280,8 +301,40 @@ def get_grading_fairness_ratings_new_format(course_soup):
 
     return grading_fairness_avg, grading_fairness_std
 
-def extract_data_from_new_webpage(course_soup, df, url, professor_df):
+def get_course_catalog_info(course_information_list, course):
+    # 1. Get the course number and subject name
+    course_number, subject_name = course.split(' ', 1)
+    # 1.1 Find which row in course_information_list corresponds to the current course
+    # 1.1.1 Define a re pattern to match the course number properly
+    pattern = r'\b' + re.escape(str(course_number)) + r'\b'
+    # 1.1.2 Find the row in course_information_list that matches the course number pattern
+    course_information_row = course_information_list[[re.search(pattern, str(x.find('strong'))) is not None for x in course_information_list].index(True)]
+    
+    # 1.2 Get the level of the course (U or G)
+    # 1.2.1 Define a re pattern to search for the course type (' U ' or ' G ')
+    pattern = r'U \(|G \('
+    # 1.2.2 Find the course type from the course information row
+    try:
+        course_type = re.search(pattern, str(course_information_row)).group().strip().replace('>','').replace(' (','')
+    except AttributeError:
+        course_type = np.nan
+
+    # 1.3 Get the course description
+    # 1.3.1 Define a re pattern to search for the course description
+    pattern = r'<p class="courseblockdesc">.*</p>'
+    # 1.3.2 Find the course description from the course information row
+    try:
+        course_description = re.search(pattern, str(course_information_row)).group().strip().replace('>','').replace('<','').replace('/','').replace('p class="courseblockdesc"','').replace('"','').replace('Description','')
+    except AttributeError:
+        course_description = np.nan
+
+    return course_type, course_description, course_number, subject_name
+
+def extract_data_from_new_webpage(course_soup, course_information_list, df, url, professor_df):
     """Extract data from a given course page."""
+    # 0. Initialize the data dictionary by iterating over the columns of df
+    data_dict = { column : None for column in df.columns }
+
     # 1. Locate the required HTML tag
     h1_tag = course_soup.find('td', class_='subjectTitle')\
                         .find('h1')
@@ -327,24 +380,30 @@ def extract_data_from_new_webpage(course_soup, df, url, professor_df):
     # 4. Initialize an empty list
     output_data_list = []
 
-    # 5. Iterate over each course
+    # 5. Add course data to the output data list
+    # 5.1 Iterate over each course in course_list
     for course in course_list:
-        current_data = data_dict.copy()
-
-        # Extract the characters before the dot (.) in course
+        # 5.2 Check if the course in question matches the subject number we are looking for
+        # 5.2.1 Extract the subject number
         subject_number = course.split('.')[0]
 
-        # Check if it matches SUBJECT_NUMBER (replace 'SUBJECT_NUMBER' with the actual value)
-        if subject_number == SUBJECT_NUMBER:  
-            course_number, subject_name = course.split(' ', 1)
+        # 5.2.2 Check if it matches SUBJECT_NUMBER
+        if subject_number == SUBJECT_NUMBER:
+            # 5.3 Output the scraped course data to a dictionary
+            # 5.3.1 Initialize the data dictionary
+            current_data = data_dict.copy()
 
-            # Search for the course 
+            # 5.3.2 Obtain data about the course from the course catalog using the course_information_list object
+            course_type, course_description, course_number, subject_name = get_course_catalog_info(course_information_list, course)
 
-            current_data["Course Number"] = course_number
+            # 5.3.3 Add the data to the dictionary
+            current_data["Course Number"] = f'="{course_number}"'
             current_data["Subject Name"] = subject_name
+            current_data["Description"] = course_description
+            current_data["Level (U or G)"] = course_type
             current_data["Year"] = year
             current_data["Term"] = term
-            current_data["Teachers"] = '; '.join(teacher_dict['teacher name'])
+            current_data["Teachers"] = '; '.join([str(name) for name in teacher_dict['teacher name']])
             current_data["Teacher Rating (Avg)"] = np.mean(teacher_dict['teacher rating'])
             current_data["Teacher Rating (STD)"] = np.std(teacher_dict['teacher rating'])
             current_data["Teacher Helpfulness (Avg)"] = np.mean(teacher_dict['teacher help'])
@@ -362,16 +421,17 @@ def extract_data_from_new_webpage(course_soup, df, url, professor_df):
             current_data["Grading Fairness (Avg)"] = grading_fairness_avg
             current_data["Grading Fairness (STD)"] = grading_fairness_std
             current_data["Webpage Link"] = url
-            current_data["Level (U or G)"] = ...
+
+            # 5.4 Add the data to the output data list
             output_data_list.append(current_data)
 
     # 6. Return the new df and professor df
     new_df = pd.DataFrame(output_data_list)
     df = pd.concat([df,new_df], ignore_index=True)
-    professor_df = add_teacher_data_to_df(professor_df, teacher_dict)
+    professor_df = add_teacher_data_to_df(professor_df, teacher_dict) if teacher_dict['teacher name'][0] != np.nan else professor_df
     return df, professor_df
 
-def extract_data(course_soup, df, url, professor_df):
+def extract_data(course_soup, course_information_list, df, url, professor_df):
     """Extract data from a given course page."""
     
     # Determine the format of the course page
@@ -380,7 +440,7 @@ def extract_data(course_soup, df, url, professor_df):
     # Handle the different formats
     if page_format == "new_format":
         # Extract data from the new format webpage
-        df, professor_df = extract_data_from_new_webpage(course_soup, df, url, professor_df)
+        df, professor_df = extract_data_from_new_webpage(course_soup, course_information_list, df, url, professor_df)
         return df, professor_df
     elif page_format == "old_format":
         # Logic to handle the old format will go here
@@ -390,7 +450,7 @@ def extract_data(course_soup, df, url, professor_df):
         # Handle the not_implemented case
         raise NotImplementedError("The given page format is not implemented!")
     
-def process_course_link(course_link, df, professor_df):
+def process_course_link(course_link, course_information_list, df, professor_df):
     link = BASE_URL + course_link if course_link.startswith('subjectEvaluation') else course_link
     response = session.get(link, cookies=cookies)
     if response.status_code != 200:
@@ -398,19 +458,76 @@ def process_course_link(course_link, df, professor_df):
         return df, professor_df
 
     course_soup = BeautifulSoup(response.content, 'html.parser')
-    df, professor_df = extract_data(course_soup, df, link, professor_df)
+    df, professor_df = extract_data(course_soup, course_information_list, df, link, professor_df)
 
     return df, professor_df
+
+def extract_header_to_content(soup):
+    header_to_content = {}
+    current_header = None
+    
+    for tag in soup.find_all(['h2', 'p']):
+        if tag.name == 'h2':
+            current_header = tag.text
+            header_to_content[current_header] = []
+        elif tag.name == 'p' and current_header is not None:
+            header_to_content[current_header].append(str(tag))
+
+    return header_to_content
+
+def get_course_year_and_term(html_string, header_to_content):
+    # 1. Get the course year and term based on the link and the header_to_content dictionary
+    course_year_and_term = list(header_to_content.keys())[[html_string in str(x) for x in header_to_content.values()].index(True)]
+
+    # 2. Extract the year and term from the course_year_and_term string
+    # 2.1 Extract the term
+    term = course_year_and_term.split(' Term')[0]
+
+    # 2.1.2 Convert the term to the appropriate format
+    if term == 'January':
+        term = 'IAP'
+    
+    # 2.2 Extract the year depending on the term
+    if term == 'IAP' or term == 'Spring':
+        year = int(course_year_and_term.split(' ')[-1].split('-')[-1])
+    else:
+        year = int(course_year_and_term.split(' ')[-1].split('-')[0])
+
+    return term, year
 
 def main():
     # Fetch the main course listing page
     response = session.get(subject_url, cookies=cookies)
     if response.status_code != 200:
-        print("Error accessing the main subject URL!")
-        return
-
+        print("Error accessing the main subject URL! Please go through the login and verification process in your browser and try again.")
+        print(f'Error code: {response.status_code}')
+        print('Exiting...')
+        return None
+    
+    # Get the course links list
     soup = BeautifulSoup(response.content, 'html.parser')
     course_links = soup.find_all('a', href=True)
+
+    # Fetch the MIT course catalog subject information page
+    # 1. Construct the search URL
+    # 1.2 Construct the search URL using the url suffix
+    search_url = MIT_CATALOG_BASE_URL + SUBJECT_NUMBER
+
+    # 1.3 Fetch the search URL
+    search_response = session.get(search_url, cookies=cookies)
+    if search_response.status_code != 200:
+        print("Error accessing the MIT course catalog subject information page!")
+        return None
+    
+    # 2. Obtain a course information list from the search response
+    # 2.1 Get the catalog soup
+    catalog_soup = BeautifulSoup(search_response.content, 'html.parser')
+
+    # 2.2 Get the course information list
+    course_information_list = catalog_soup.find_all('div', class_='courseblock')
+
+    # Obtain the header to content dictionary map
+    header_to_content = extract_header_to_content(soup)
 
     # Define CSV file paths
     subject_data_csv_path = os.path.join(CSV_FOLDER_PATH, f"subject_{SUBJECT_NUMBER}.csv")
@@ -420,7 +537,7 @@ def main():
     if pd.io.common.file_exists(subject_data_csv_path):
         df = pd.read_csv(subject_data_csv_path)
     else:
-        columns = ["Year", "Term", "Course Number", "Subject Name", "Description", "Level (U or G)", "Number of Units", "Teachers",
+        columns = ["Year", "Term", "Course Number", "Subject Name", "Description", "Level (U or G)", "Teachers",
                    "Teacher Rating (Avg)", "Teacher Rating (STD)", 
                    "Teacher Helpfulness (Avg)", "Teacher Helpfulness (STD)", "Number of Respondents", 
                    "Response Rate", "Subject Rating (Avg)", "Subject Rating (STD)", "Pace (Avg)", 
@@ -440,20 +557,29 @@ def main():
     for link in course_links:
         html_string = str(link)  # Assuming the link text contains the course number
         if "subjectId=" in html_string:
-            if not check_course_exists_in_dataframe(html_string, df):
+            # Get the course year and term
+            term, year = get_course_year_and_term(html_string, header_to_content)
+
+            # Get the course number
+            course_number = link.get_text().split(' ')[0]
+
+            if not check_course_exists_in_dataframe(course_number, term, year, df):
+                # 1. Start the timer
                 start_time = time.time()
 
-                df, professor_df = process_course_link(link['href'], df, professor_df)
+                # 2. Process the course link
+                df, professor_df = process_course_link(link['href'], course_information_list, df, professor_df)
 
+                # 3. Sleep for 2 seconds
                 elapsed_time = time.time() - start_time
                 if elapsed_time < 2:
                     time.sleep(2 - elapsed_time)
 
-                # Save dataframe to CSV
+                # 4. Save dataframe to CSV
                 df.to_csv(subject_data_csv_path, index=False)
                 professor_df.to_csv(professor_csv_path, index=False)
 
-                print(f"Finished processing course {html_string} in {elapsed_time:0.2f} seconds!")
+                print(f"Finished processing course {course_number} ({term} {year}) in {elapsed_time:0.2f} seconds!")
 
 if __name__ == "__main__":
     main()
