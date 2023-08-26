@@ -38,12 +38,15 @@ def check_course_exists_in_dataframe(course_number, term, year, df):
 
     # 2. Check if the course number exists in the dataframe already
     if course_number in df['Course Number'].values:
-        # 2.1 Get the row of the course
-        course_row = df.loc[df['Course Number'] == course_number]
+        # 2.1 Get the row of the course, that is, where the course number, term, and year match
+        course_rows = df.loc[df['Course Number'] == course_number]
+        course_row = course_rows.loc[(course_rows['Term'] == term) & (course_rows['Year'] == year)]
 
         # 2.2 Check if the term and year match
         if course_row['Term'].values[0] == term and course_row['Year'].values[0] == year:
             output_condition = True
+    else:
+        output_condition = False
 
     return output_condition
 
@@ -78,7 +81,7 @@ def get_subject_rating_new_format(course_soup):
         subject_mean = np.nan
     try:
         subject_std = float(str(course_soup).split('Overall rating of the subject')[1].split('width="50">')[1].split('</td>')[0])
-    except (NameError, ValueError):
+    except (NameError, ValueError, IndexError):
         subject_std = np.nan
     
     return subject_mean, subject_std
@@ -307,25 +310,29 @@ def get_course_catalog_info(course_information_list, course):
     # 1.1 Find which row in course_information_list corresponds to the current course
     # 1.1.1 Define a re pattern to match the course number properly
     pattern = r'\b' + re.escape(str(course_number)) + r'\b'
-    # 1.1.2 Find the row in course_information_list that matches the course number pattern
-    course_information_row = course_information_list[[re.search(pattern, str(x.find('strong'))) is not None for x in course_information_list].index(True)]
-    
-    # 1.2 Get the level of the course (U or G)
-    # 1.2.1 Define a re pattern to search for the course type (' U ' or ' G ')
-    pattern = r'U \(|G \('
-    # 1.2.2 Find the course type from the course information row
     try:
-        course_type = re.search(pattern, str(course_information_row)).group().strip().replace('>','').replace(' (','')
-    except AttributeError:
-        course_type = np.nan
+        # 1.1.2 Find the row in course_information_list that matches the course number pattern
+        course_information_row = course_information_list[[re.search(pattern, str(x.find('strong'))) is not None for x in course_information_list].index(True)]
+        
+        # 1.2 Get the level of the course (U or G)
+        # 1.2.1 Define a re pattern to search for the course type (' U ' or ' G ')
+        pattern = r'U \(|G \('
+        # 1.2.2 Find the course type from the course information row
+        try:
+            course_type = re.search(pattern, str(course_information_row)).group().strip().replace('>','').replace(' (','')
+        except AttributeError:
+            course_type = np.nan
 
-    # 1.3 Get the course description
-    # 1.3.1 Define a re pattern to search for the course description
-    pattern = r'<p class="courseblockdesc">.*</p>'
-    # 1.3.2 Find the course description from the course information row
-    try:
-        course_description = re.search(pattern, str(course_information_row)).group().strip().replace('>','').replace('<','').replace('/','').replace('p class="courseblockdesc"','').replace('"','').replace('Description','')
-    except AttributeError:
+        # 1.3 Get the course description
+        # 1.3.1 Define a re pattern to search for the course description
+        pattern = r'<p class="courseblockdesc">.*</p>'
+        # 1.3.2 Find the course description from the course information row
+        try:
+            course_description = re.search(pattern, str(course_information_row)).group().strip().replace('>','').replace('<','').replace('/','').replace('p class="courseblockdesc"','').replace('"','').replace('Description','')
+        except AttributeError:
+            course_description = np.nan
+    except ValueError:
+        course_type = np.nan
         course_description = np.nan
 
     return course_type, course_description, course_number, subject_name
