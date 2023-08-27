@@ -1,0 +1,5 @@
+requests
+browser_cookie3
+pandas
+beautifulsoup4
+numpy

@@ -307,6 +307,11 @@ def get_course_catalog_info(course_information_list, course):
     try:
         # 1.1.2 Find the row in course_information_list that matches the course number pattern
         course_information_row = course_information_list[[re.search(pattern, str(x.find('strong'))) is not None for x in course_information_list].index(True)]
+
+        # 1.1.3 If the subject name is not in the course information row, then raise a ValueError to assign np.nan to the course information
+        if subject_name not in str(course_information_row):
+            print(f'{course_number} {subject_name} is not in the current MIT course catalog...')
+            raise ValueError('The subject name is not in the course information row...')
         
         # 1.2 Get the level of the course (U or G)
         # 1.2.1 Define a re pattern to search for the course type (' U ' or ' G ')
@@ -432,6 +437,95 @@ def extract_data_from_new_webpage(course_soup, course_information_list, df, url,
     professor_df = add_teacher_data_to_df(professor_df, teacher_dict) if teacher_dict['teacher name'][0] != np.nan else professor_df
     return df, professor_df
 
+def extract_data_from_old_webpage(course_soup, course_information_list, df, url, professor_df):
+    """Extract data from a given course page with old format."""
+
+    # 0. Initialize data_dict with columns of df
+    data_dict = {column: None for column in df.columns}
+
+    # 1. Get the course list that contains which courses the page corresponds to
+    # 1.1 Find where in the page the course list is located
+    course_data_tag = course_soup.find_all('h2')[0]
+
+    # 2. Convert contents of the found tag to a format suitable for old webpage
+    # Placeholder logic
+    course_list = [course.strip() for course in course_data_tag.get_text(separator='<br>').split('<br>')]
+
+    # 3. Extract other data from old webpage format:
+    # 3.1. Get year and term
+    year, term = get_year_and_term_old_format(course_soup)
+
+    # 3.2. Get data on responders and response rate
+    responders_data = get_responders_data_old_format(course_soup)
+
+    # 3.3. Get subject rating
+    subject_rating_data = get_subject_rating_old_format(course_soup)
+
+    # 3.4. Get teacher data
+    teacher_data = get_teacher_data_old_format(course_soup)
+
+    # 3.5. Get pace data
+    pace_data = get_pace_old_format(course_soup)
+
+    # 3.6. Get hours data
+    hours_data = get_hours_old_format(course_soup)
+
+    # 3.7. Get assignment quality data
+    assignment_quality_data = get_assignment_quality_old_format(course_soup)
+
+    # 3.8. Get grading fairness data
+    grading_fairness_data = get_grading_fairness_old_format(course_soup)
+
+    # 4. Initialize an empty output_data_list
+    output_data_list = []
+
+    # 5. Iterate over each course in course_list:
+    # Placeholder logic for data extraction
+    # 5.1. Check if course exists in df
+    # 5.2. If yes, get course data from course_information_list
+    # 5.3. Update current_data dictionary with scraped data
+    # 5.4. Append current_data to output_data_list
+
+    # 6. Convert output_data_list to a new_df and concatenate it with df
+    new_df = pd.DataFrame(output_data_list)
+    df = pd.concat([df, new_df], ignore_index=True)
+
+    # 7. Update professor_df with teacher data
+
+    # 8. Return df and professor_df
+    return df, professor_df
+
+def get_year_and_term_old_format(soup):
+    """Get the year and term of the course from the old format webpage."""
+    # 1. Find where the year and term is located
+    year_and_term_tag = soup.find_all('table')[1].find_all('b')[0] # get the second table in the list
+    term_and_year = year_and_term_tag.get_text().replace('\xa0',' ').replace('\t','').replace('\n','').replace('\r','').split('|')[0]
+    term = term_and_year.split(' ')[0]
+    year = int(term_and_year.split(' ')[1])
+
+    return None
+
+def get_responders_data_old_format(soup):
+    return None
+
+def get_subject_rating_old_format(soup):
+    return None
+
+def get_teacher_data_old_format(soup):
+    return None
+
+def get_pace_old_format(soup):
+    return None
+
+def get_hours_old_format(soup):
+    return None
+
+def get_assignment_quality_old_format(soup):
+    return None
+
+def get_grading_fairness_old_format(soup):
+    return None
+
 def extract_data(course_soup, course_information_list, df, url, professor_df):
     """Extract data from a given course page."""
     
@@ -445,7 +539,7 @@ def extract_data(course_soup, course_information_list, df, url, professor_df):
         return df, professor_df
     elif page_format == "old_format":
         # Logic to handle the old format will go here
-        data_list = []
+        df, professor_df = extract_data_from_old_webpage(course_soup, course_information_list, df, url, professor_df)
         return df, professor_df
     else:
         # Handle the not_implemented case
@@ -557,7 +651,7 @@ def main():
     # Iterate through each link
     for link in course_links:
         html_string = str(link)  # Assuming the link text contains the course number
-        if "subjectId=" in html_string:
+        if 'evaluation' in html_string: # "subjectId=" in html_string:
             # Get the course year and term
             term, year = get_course_year_and_term(html_string, header_to_content)
 
