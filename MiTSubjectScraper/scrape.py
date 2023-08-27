@@ -28,6 +28,16 @@ cookies = browser_cookie3.firefox()
 # Start a session for requests
 session = requests.Session()
 
+# define the header to bypass student stuff
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:92.0) Gecko/20100101 Firefox/92.0',
+    'Referrer': 'https://student.mit.edu/',
+}
+
+# Custom Exception Handling
+class MultipleTeacherMatches(Exception):
+    pass
+
 def check_course_exists_in_dataframe(course_number, term, year, df):
     """Check if a course exists in the dataframe based on its course number."""
     # 0. Initialize the output variable
@@ -117,8 +127,17 @@ def combine_distributions(mean1, std1, n1, mean2, std2, n2):
 def add_teacher_data_to_df(professor_df, teacher_dict):
     # 1. Iterate over each teacher
     for i, teacher_name in enumerate(teacher_dict['teacher name']):
+        # 1.1 Handle the case where the teacher name is all caps
+        all_caps_flag = teacher_name.isupper()
+        if all_caps_flag:
+            teacher_name = teacher_name.title()
+        first_letter = teacher_name[0]
+        last_name = teacher_name.split(' ')[-1]
+
+        condition = professor_df['Teacher Name'].apply(lambda x: bool(re.search(r'\b' + re.escape(first_letter) + r'.*' + re.escape(last_name) + r'\b', x))) if all_caps_flag else professor_df['Teacher Name'] == teacher_name
+
         # 2. Check if the teacher exists in the dataframe
-        if teacher_name not in professor_df['Teacher Name'].values:
+        if not condition.any():
             # 2.1 Add the teacher to the dataframe
             add_dict = {'Teacher Name': teacher_name,
                         'Teacher Rating (Avg)': teacher_dict['teacher rating'][i],
@@ -131,30 +150,37 @@ def add_teacher_data_to_df(professor_df, teacher_dict):
             professor_df = pd.concat([professor_df,new_df], ignore_index=True)
         else:
             # 2.2 Get the current teacher's rating, helpfulness, and number of ratings
-            current_teacher_rating = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Rating (Avg)'].values[0]
-            current_teacher_rating_std = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Rating (STD)'].values[0]
-            current_teacher_help = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Helpfulness (Avg)'].values[0]
-            current_teacher_help_std = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Helpfulness (STD)'].values[0]
-            current_num_ratings = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Number of Ratings'].values[0]
-            current_num_classes = professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Number of Classes'].values[0]
+            try:
+                if sum(condition) > 1:
+                    # handle multiple matches
+                    # for example, raise an error, or log a warning
+                    raise MultipleTeacherMatches("Multiple matches found for teacher: {}".format(teacher_name))
+                current_teacher_rating = professor_df.loc[condition, 'Teacher Rating (Avg)'].values[0]
+                current_teacher_rating_std = professor_df.loc[condition, 'Teacher Rating (STD)'].values[0]
+                current_teacher_help = professor_df.loc[condition, 'Teacher Helpfulness (Avg)'].values[0]
+                current_teacher_help_std = professor_df.loc[condition, 'Teacher Helpfulness (STD)'].values[0]
+                current_num_ratings = professor_df.loc[condition, 'Number of Ratings'].values[0]
+                current_num_classes = professor_df.loc[condition, 'Number of Classes'].values[0]
 
-            # 3. Update the teacher's rating, helpfulness, and number of ratings
-            # 3.1 Get the delta values
-            delta_teacher_rating = teacher_dict['teacher rating'][i]
-            delta_teacher_help = teacher_dict['teacher help'][i]
-            delta_num_ratings = teacher_dict['number of votes'][i]
+                # 3. Update the teacher's rating, helpfulness, and number of ratings
+                # 3.1 Get the delta values
+                delta_teacher_rating = teacher_dict['teacher rating'][i]
+                delta_teacher_help = teacher_dict['teacher help'][i]
+                delta_num_ratings = teacher_dict['number of votes'][i]
 
-            # 3.2 Combine the distributions
-            combined_teacher_rating, combined_teacher_rating_std, _ = combine_distributions(current_teacher_rating, current_teacher_rating_std, current_num_ratings, delta_teacher_rating, 0, delta_num_ratings)
-            combined_teacher_help, combined_teacher_help_std, _ = combine_distributions(current_teacher_help, current_teacher_help_std, current_num_ratings, delta_teacher_help, 0, delta_num_ratings)
-        
-            # 3.3 Update the dataframe
-            professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Rating (Avg)'] = combined_teacher_rating
-            professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Rating (STD)'] = combined_teacher_rating_std
-            professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Helpfulness (Avg)'] = combined_teacher_help
-            professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Teacher Helpfulness (STD)'] = combined_teacher_help_std
-            professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Number of Ratings'] = current_num_ratings + delta_num_ratings
-            professor_df.loc[professor_df['Teacher Name'] == teacher_name, 'Number of Classes'] = current_num_classes + 1
+                # 3.2 Combine the distributions
+                combined_teacher_rating, combined_teacher_rating_std, _ = combine_distributions(current_teacher_rating, current_teacher_rating_std, current_num_ratings, delta_teacher_rating, 0, delta_num_ratings)
+                combined_teacher_help, combined_teacher_help_std, _ = combine_distributions(current_teacher_help, current_teacher_help_std, current_num_ratings, delta_teacher_help, 0, delta_num_ratings)
+            
+                # 3.3 Update the dataframe
+                professor_df.loc[condition, 'Teacher Rating (Avg)'] = combined_teacher_rating
+                professor_df.loc[condition, 'Teacher Rating (STD)'] = combined_teacher_rating_std
+                professor_df.loc[condition, 'Teacher Helpfulness (Avg)'] = combined_teacher_help
+                professor_df.loc[condition, 'Teacher Helpfulness (STD)'] = combined_teacher_help_std
+                professor_df.loc[condition, 'Number of Ratings'] = current_num_ratings + delta_num_ratings
+                professor_df.loc[condition, 'Number of Classes'] = current_num_classes + 1
+            except MultipleTeacherMatches:
+                continue
 
     return professor_df
 
@@ -456,41 +482,79 @@ def extract_data_from_old_webpage(course_soup, course_information_list, df, url,
     year, term = get_year_and_term_old_format(course_soup)
 
     # 3.2. Get data on responders and response rate
-    responders_data = get_responders_data_old_format(course_soup)
+    num_responses, response_rate = get_responders_data_old_format(course_soup)
 
     # 3.3. Get subject rating
-    subject_rating_data = get_subject_rating_old_format(course_soup)
+    subject_rating_mean = get_subject_rating_old_format(course_soup)
 
     # 3.4. Get teacher data
-    teacher_data = get_teacher_data_old_format(course_soup)
+    teacher_dict = get_teacher_data_old_format(course_soup)
 
     # 3.5. Get pace data
-    pace_data = get_pace_old_format(course_soup)
+    pace_avg, pace_std = get_pace_old_format(course_soup)
 
     # 3.6. Get hours data
-    hours_data = get_hours_old_format(course_soup)
+    weekly_hours_avg, weekly_hours_std = get_hours_old_format(course_soup)
 
     # 3.7. Get assignment quality data
-    assignment_quality_data = get_assignment_quality_old_format(course_soup)
+    assignment_quality_avg, assignment_quality_std = get_assignment_quality_old_format(course_soup)
 
     # 3.8. Get grading fairness data
-    grading_fairness_data = get_grading_fairness_old_format(course_soup)
+    grading_fairness_avg, grading_fairness_std = get_grading_fairness_old_format(course_soup)
 
     # 4. Initialize an empty output_data_list
     output_data_list = []
 
     # 5. Iterate over each course in course_list:
-    # Placeholder logic for data extraction
-    # 5.1. Check if course exists in df
-    # 5.2. If yes, get course data from course_information_list
-    # 5.3. Update current_data dictionary with scraped data
-    # 5.4. Append current_data to output_data_list
+    for course in course_list:
+        # 5.2 Check if the course in question matches the subject number we are looking for
+        # 5.2.1 Extract the subject number
+        subject_number = course.split('.')[0]
+
+        # 5.2.2 Check if it matches SUBJECT_NUMBER
+        if subject_number == SUBJECT_NUMBER:
+            # 5.3 Output the scraped course data to a dictionary
+            # 5.3.1 Initialize the data dictionary
+            current_data = data_dict.copy()
+
+            # 5.3.2 Obtain data about the course from the course catalog using the course_information_list object
+            course_type, course_description, course_number, subject_name = get_course_catalog_info(course_information_list, course)
+
+            # 5.3.3 Add the data to the dictionary
+            current_data["Course Number"] = f'="{course_number}"'
+            current_data["Subject Name"] = subject_name
+            current_data["Description"] = course_description
+            current_data["Level (U or G)"] = course_type
+            current_data["Year"] = year
+            current_data["Term"] = term
+            current_data["Teachers"] = '; '.join([str(name) for name in teacher_dict['teacher name']])
+            current_data["Teacher Rating (Avg)"] = np.mean(teacher_dict['teacher rating'])
+            current_data["Teacher Rating (STD)"] = np.std(teacher_dict['teacher rating'])
+            current_data["Teacher Helpfulness (Avg)"] = np.mean(teacher_dict['teacher help'])
+            current_data["Teacher Helpfulness (STD)"] = np.std(teacher_dict['teacher help'])
+            current_data["Number of Respondents"] = num_responses
+            current_data["Response Rate"] = response_rate
+            current_data["Subject Rating (Avg)"] = subject_rating_mean
+            current_data["Subject Rating (STD)"] = np.nan
+            current_data["Pace (Avg)"] = pace_avg
+            current_data["Pace (STD)"] = pace_std
+            current_data["Total Weekly Hours Spent (Avg)"] = weekly_hours_avg
+            current_data["Total Weekly Hours Spent (STD)"] = weekly_hours_std
+            current_data["Assignment Quality (Avg)"] = assignment_quality_avg
+            current_data["Assignment Quality (STD)"] = assignment_quality_std
+            current_data["Grading Fairness (Avg)"] = grading_fairness_avg
+            current_data["Grading Fairness (STD)"] = grading_fairness_std
+            current_data["Webpage Link"] = url
+
+            # 5.4 Add the data to the output data list
+            output_data_list.append(current_data)
 
     # 6. Convert output_data_list to a new_df and concatenate it with df
     new_df = pd.DataFrame(output_data_list)
     df = pd.concat([df, new_df], ignore_index=True)
 
     # 7. Update professor_df with teacher data
+    professor_df = add_teacher_data_to_df(professor_df, teacher_dict) if teacher_dict['teacher name'][0] != np.nan else professor_df
 
     # 8. Return df and professor_df
     return df, professor_df
@@ -501,30 +565,133 @@ def get_year_and_term_old_format(soup):
     year_and_term_tag = soup.find_all('table')[1].find_all('b')[0] # get the second table in the list
     term_and_year = year_and_term_tag.get_text().replace('\xa0',' ').replace('\t','').replace('\n','').replace('\r','').split('|')[0]
     term = term_and_year.split(' ')[0]
-    year = int(term_and_year.split(' ')[1])
+    year = int(term_and_year.split(' ')[2]) if term == 'Fall' else int(term_and_year.split(' ')[-1])
 
-    return None
+    return year, term
 
 def get_responders_data_old_format(soup):
-    return None
+    # 1. Find where the response data is located
+    response_data_tag = soup.find_all('table')[1].find_all('td')[3].find('font') # get the second table in the list
+    
+    # 2. Obtain the response string containing the response data
+    response_string = response_data_tag.get_text().replace('\xa0',' ').replace('\t','').replace('\n','').replace('\r','').split('|')[0]
+    
+    # 3. Obtain the number of responses and the response rate
+    num_responses = int(response_string.split(' out of ')[0].split(' ')[-1])
+    # 3.1 Obtain the response rate
+    # 3.1.1 Obtain the total number of potential responses
+    num_students = int(response_string.split(' out of ')[-1])
+    # 3.1.2 Calculate the response rate
+    response_rate = num_responses/num_students
+
+    return num_responses, response_rate
 
 def get_subject_rating_old_format(soup):
-    return None
+    # 1. Find where the subject rating data is located
+    subject_rating_data_tag = soup.find_all('table')[1].find_all('td')[4].find('b')
+
+    # 2. Obtain the subject rating (float)
+    subject_rating_avg = float(subject_rating_data_tag.get_text())
+    
+    return subject_rating_avg
 
 def get_teacher_data_old_format(soup):
-    return None
+    try:
+        teacher_row_data = soup.find('div', id='contentsframe').find('table').find_all('table')[1].find_all('tr')[1::]
+        teacher_data = {'teacher name':[], 'teacher rating':[], 'teacher help':[], 'number of votes':[]}
+        for table_row in teacher_row_data:
+            # 1. Get the teacher name
+            teacher_name = ' '.join(table_row.find_all('td')[0].get_text().replace('\xa0',' ').replace('\t','').replace('\n','').replace('\r','').split(', ')[0:2][::-1])
+            # 1.1 Remove patterns like (L) or ([character here])
+            teacher_name = re.sub(r'\s?\([A-Za-z]\)', '', teacher_name).strip()
+
+            # 2. Get the teacher helpfulness rating
+            teacher_help = float(table_row.find_all('td')[-2].get_text().split(' ')[0].replace('\xa0','').replace('\t','').replace('\n','').replace('\r','').split('(')[0])
+            
+            # 3. Get the overall teacher rating
+            teacher_rating = float(table_row.find_all('td')[-1].get_text().split(' ')[0].replace('\xa0','').replace('\t','').replace('\n','').replace('\r','').split('(')[0])
+            
+            # 4. Get the number of votes put in for the teacher
+            num_votes = int(table_row.find_all('td')[-1].get_text().split(' ')[-1].split('(')[1].split(')')[0])
+
+            # 5. Add the values to the dictionary
+            teacher_data['teacher name'].append(teacher_name)
+            teacher_data['teacher rating'].append(teacher_rating)
+            teacher_data['teacher help'].append(teacher_help)
+            teacher_data['number of votes'].append(num_votes)
+
+    except AttributeError:
+        # if there are no teachers, append np.nan to all the lists
+        teacher_data = {'teacher name':[np.nan], 'teacher rating':[np.nan], 'teacher help':[np.nan], 'number of votes':[np.nan]}
+
+    return teacher_data
 
 def get_pace_old_format(soup):
-    return None
+    # 1. Obtain the pace from the soup
+    try:
+        pace_avg = float([row.get_text().strip() for row in soup.select('div#contentsframe tr') if 'Pace' in row.get_text()][-1].split('Pace')[-1].split('\n')[-1].split('\xa0')[0])
+    except IndexError:
+        pace_avg = np.nan
+    
+    pace_std = np.nan # old webpage does not have std data
+
+    return pace_avg, pace_std
 
 def get_hours_old_format(soup):
-    return None
+    # 1. Obtain the hour data from the soup
+    # 1.1 Initialize the hour outputs
+    total_hours_avg = []
+
+    # 1.2 Find the hours in class
+    try:
+        hours_in_class = float([row.get_text().strip() for row in soup.select('div#contentsframe table') if 'Hours' in row.get_text() and 'In Class' in row.get_text()][0].replace('\n','').split('HoursIn')[-1].split(':')[1].split(' ')[0])
+        total_hours_avg.append(hours_in_class)
+    except IndexError:
+        hours_in_class = np.nan
+
+    # 1.3 Find the hours in lab
+    try:
+        hours_in_lab = float([row.get_text().strip() for row in soup.select('div#contentsframe table') if 'Hours' in row.get_text() and 'In Class' in row.get_text()][0].replace('\n','').split('HoursIn')[-1].split(':')[2].split(' ')[0])
+        total_hours_avg.append(hours_in_lab)
+    except IndexError:
+        hours_in_lab = np.nan
+    
+    # 1.4 Find the hours on homework
+    try:
+        hours_hw = float([row.get_text().strip() for row in soup.select('div#contentsframe table') if 'Hours' in row.get_text() and 'In Class' in row.get_text()][0].replace('\n','').split('HoursIn')[-1].split(':')[3].split(' ')[0])
+        total_hours_avg.append(hours_hw)
+    except IndexError:
+        hours_hw = np.nan
+
+    # 1.5 Get the total hours spent
+    total_hours_avg = np.sum(total_hours_avg)
+    total_hours_std = np.nan # old webpage does not have std data
+
+    return total_hours_avg, total_hours_std
 
 def get_assignment_quality_old_format(soup):
-    return None
+    # 1. Get the assignment quality data
+    # 1.1 Get the grading fairness table html data
+    try:
+        assignment_quality_avg = float(soup.find_all('tr')[[('Problems sets helped me learn' in x.get_text() or 'Assignments Relevant' in x.get_text()) for x in soup.find_all('tr')].index(True)].find('b').get_text().replace('\xa0',''))
+    except ValueError:
+        assignment_quality_avg = np.nan
+
+    assignment_quality_std = np.nan
+
+    return assignment_quality_avg, assignment_quality_std
 
 def get_grading_fairness_old_format(soup):
-    return None
+    # 1. Get the grading fairness data
+    # 1.1 Get the grading fairness table html data
+    try:
+        grading_fairness_avg = float(soup.find_all('tr')[[('graded fairly' in x.get_text() or 'grading thus far has been fair' in x.get_text() or 'Grading thus far has been fair' in x.get_text()) for x in soup.find_all('tr')].index(True)].find('b').get_text().replace('\xa0',''))
+    except ValueError:
+        grading_fairness_avg = np.nan
+
+    grading_fairness_std = np.nan
+
+    return grading_fairness_avg, grading_fairness_std
 
 def extract_data(course_soup, course_information_list, df, url, professor_df):
     """Extract data from a given course page."""
@@ -547,7 +714,7 @@ def extract_data(course_soup, course_information_list, df, url, professor_df):
     
 def process_course_link(course_link, course_information_list, df, professor_df):
     link = BASE_URL + course_link if course_link.startswith('subjectEvaluation') else course_link
-    response = session.get(link, cookies=cookies)
+    response = session.get(link, cookies=cookies,headers=headers)
     if response.status_code != 200:
         print(f"Error accessing course page: {link}")
         return df, professor_df
