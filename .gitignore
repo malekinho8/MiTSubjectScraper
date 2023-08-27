@@ -3,3 +3,6 @@ sandbox/
 
 # pycache folder in MiTSubjectScraper
 MiTSubjectScraper/__pycache__/
+
+# gecko driver
+geckodriver.log
