@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup, Tag
 from catalog_mapping import course_names
 
 # 1. Initialization
-CSV_FOLDER_PATH = "course_csv_info"
+CSV_FOLDER_PATH = "course_csv_data"
 SUBJECT_NUMBER = 2
 SUBJECT_NUMBER = str(SUBJECT_NUMBER)
 BASE_URL = "https://eduapps.mit.edu/ose-rpt/"
@@ -40,7 +40,7 @@ def check_course_exists_in_dataframe(course_number, term, year, df):
     if course_number in df['Course Number'].values:
         # 2.1 Get the row of the course, that is, where the course number, term, and year match
         course_rows = df.loc[df['Course Number'] == course_number]
-        course_row = course_rows.loc[(course_rows['Term'] == term) & (course_rows['Year'] == year)] if len(course_rows) > 1 else course_rows
+        course_row = course_rows.loc[(course_rows['Term'] == term) & (course_rows['Year'] == year)]
         output_condition = True if course_row.values.any() else False
     return output_condition
 
@@ -651,13 +651,14 @@ def main():
     # Iterate through each link
     for link in course_links:
         html_string = str(link)  # Assuming the link text contains the course number
-        if 'evaluation' in html_string: # "subjectId=" in html_string:
+        if 'subjectId=' in html_string: # "subjectId=" in html_string: evaluation
             # Get the course year and term
             term, year = get_course_year_and_term(html_string, header_to_content)
 
             # Get the course number
             course_number = link.get_text().split(' ')[0]
 
+            # test filter, if course number is equal to 2.12
             if not check_course_exists_in_dataframe(course_number, term, year, df):
                 # 1. Start the timer
                 start_time = time.time()
