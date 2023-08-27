@@ -163,13 +163,13 @@ def get_pace_new_format(course_soup):
     # 1.1 Get the pace average rating
     try:
         pace_avg = float(course_soup.find_all('table', class_='indivQuestions')[['ace ' in x.get_text() for x in course_soup.find_all('table', class_='indivQuestions')].index(True)].find('tbody').find_all('tr')[-3].find('td', class_='avg').get_text())
-    except NameError:
+    except (NameError, ValueError):
         pace_avg = np.nan
     
     # 1.2 Get the pace standard deviation
     try:
         pace_std = float(course_soup.find_all('table', class_='indivQuestions')[['ace ' in x.get_text() for x in course_soup.find_all('table', class_='indivQuestions')].index(True)].find('tbody').find_all('tr')[-3].find_all('td')[-1].get_text())
-    except NameError:
+    except (NameError, ValueError):
         pace = np.nan
 
     return pace_avg, pace_std
