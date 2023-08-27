@@ -170,7 +170,7 @@ def get_pace_new_format(course_soup):
     try:
         pace_std = float(course_soup.find_all('table', class_='indivQuestions')[['ace ' in x.get_text() for x in course_soup.find_all('table', class_='indivQuestions')].index(True)].find('tbody').find_all('tr')[-3].find_all('td')[-1].get_text())
     except (NameError, ValueError):
-        pace = np.nan
+        pace_std = np.nan
 
     return pace_avg, pace_std
 
