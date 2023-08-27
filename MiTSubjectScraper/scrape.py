@@ -818,7 +818,7 @@ def main():
     # Iterate through each link
     for link in course_links:
         html_string = str(link)  # Assuming the link text contains the course number
-        if 'subjectId=' in html_string: # "subjectId=" in html_string: evaluation
+        if 'subjectId=' in html_string or 'evaluation' in html_string: # "subjectId=" in html_string: evaluation
             # Get the course year and term
             term, year = get_course_year_and_term(html_string, header_to_content)
 
