@@ -282,17 +282,17 @@ def get_assignment_quality_new_format(course_soup):
 def get_grading_fairness_ratings_new_format(course_soup):
     # 1. Get the grading fairness data
     # 1.1 Get the grading fairness table html data
-    grading_fairness_table = course_soup.find_all('table', class_='indivQuestions')[[('Graded fairly' in x.get_text() or 'grading thus far has been fair' in x.get_text() or 'Grading thus far has been fair' in x.get_text()) for x in course_soup.find_all('table', class_='indivQuestions')].index(True)].find('tbody').find_all('tr')
+    grading_fairness_table = course_soup.find_all('table', class_='indivQuestions')[[('Graded fairly' in x.get_text() or 'grading thus far has been fair' in x.get_text() or 'Grading thus far has been fair' in x.get_text() or 'Grading was fair' in x.get_text()) for x in course_soup.find_all('table', class_='indivQuestions')].index(True)].find('tbody').find_all('tr')
 
     # 1.2 Get the grading fairness average
     try:
-        grading_fairness_avg = float(grading_fairness_table[[('Graded fairly' in x.get_text() or 'grading thus far has been fair' in x.get_text() or 'Grading thus far has been fair' in x.get_text()) for x in grading_fairness_table].index(True)].find('td', class_='avg').get_text())
+        grading_fairness_avg = float(grading_fairness_table[[('Graded fairly' in x.get_text() or 'grading thus far has been fair' in x.get_text() or 'Grading thus far has been fair' in x.get_text() or 'Grading was fair' in x.get_text()) for x in grading_fairness_table].index(True)].find('td', class_='avg').get_text())
     except:
         grading_fairness_avg = np.nan
     
     # 1.3 Get the grading fairness standard deviation
     try:
-        grading_fairness_std = float(grading_fairness_table[[('Graded fairly' in x.get_text() or 'grading thus far has been fair' in x.get_text() or 'Grading thus far has been fair' in x.get_text()) for x in grading_fairness_table].index(True)].find_all('td')[-1].get_text())
+        grading_fairness_std = float(grading_fairness_table[[('Graded fairly' in x.get_text() or 'grading thus far has been fair' in x.get_text() or 'Grading thus far has been fair' in x.get_text() or 'Grading was fair' in x.get_text()) for x in grading_fairness_table].index(True)].find_all('td')[-1].get_text())
     except:
         grading_fairness_std = np.nan
 
