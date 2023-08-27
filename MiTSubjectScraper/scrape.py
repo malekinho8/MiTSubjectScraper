@@ -41,7 +41,7 @@ def check_course_exists_in_dataframe(course_number, term, year, df):
         # 2.1 Get the row of the course, that is, where the course number, term, and year match
         course_rows = df.loc[df['Course Number'] == course_number]
         course_row = course_rows.loc[(course_rows['Term'] == term) & (course_rows['Year'] == year)] if len(course_rows) > 1 else course_rows
-        output_condition = True if course_row.values else False
+        output_condition = True if course_row.values.any() else False
     return output_condition
 
 def get_page_format(course_soup):
