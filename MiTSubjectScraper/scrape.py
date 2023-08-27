@@ -125,6 +125,10 @@ def combine_distributions(mean1, std1, n1, mean2, std2, n2):
     return combined_mean, combined_std, combined_weight
 
 def add_teacher_data_to_df(professor_df, teacher_dict):
+    """Add teacher data to the professor dataframe."""
+    # 0. Fill the teacher name column with 'Unkown' if it is empty or nan
+    professor_df['Teacher Name'] = professor_df['Teacher Name'].fillna('Unknown')
+
     # 1. Iterate over each teacher
     for i, teacher_name in enumerate(teacher_dict['teacher name']):
         # 1.1 Handle the case where the teacher name is all caps
@@ -326,7 +330,8 @@ def get_grading_fairness_ratings_new_format(course_soup):
 
 def get_course_catalog_info(course_information_list, course):
     # 1. Get the course number and subject name
-    course_number, subject_name = course.split(' ', 1)
+    course_number = course.split(' ')[0]
+    subject_name = course.split(' ')[1].replace(' : ','').strip()
     # 1.1 Find which row in course_information_list corresponds to the current course
     # 1.1.1 Define a re pattern to match the course number properly
     pattern = r'\b' + re.escape(str(course_number)) + r'\b'
@@ -612,7 +617,10 @@ def get_teacher_data_old_format(soup):
             teacher_rating = float(table_row.find_all('td')[-1].get_text().split(' ')[0].replace('\xa0','').replace('\t','').replace('\n','').replace('\r','').split('(')[0])
             
             # 4. Get the number of votes put in for the teacher
-            num_votes = int(table_row.find_all('td')[-1].get_text().split(' ')[-1].split('(')[1].split(')')[0])
+            try:
+                num_votes = int(table_row.find_all('td')[-1].get_text().split(' ')[-1].split('(')[1].split(')')[0])
+            except ValueError:
+                num_votes = np.nan
 
             # 5. Add the values to the dictionary
             teacher_data['teacher name'].append(teacher_name)
@@ -739,7 +747,7 @@ def extract_header_to_content(soup):
 
 def get_course_year_and_term(html_string, header_to_content):
     # 1. Get the course year and term based on the link and the header_to_content dictionary
-    course_year_and_term = list(header_to_content.keys())[[html_string in str(x) for x in header_to_content.values()].index(True)]
+    course_year_and_term = list(header_to_content.keys())[[html_string.split('>')[0] in str(x) for x in header_to_content.values()].index(True)]
 
     # 2. Extract the year and term from the course_year_and_term string
     # 2.1 Extract the term
