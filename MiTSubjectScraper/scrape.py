@@ -465,7 +465,7 @@ def extract_data_from_new_webpage(course_soup, course_information_list, df, url,
     # 6. Return the new df and professor df
     new_df = pd.DataFrame(output_data_list)
     df = pd.concat([df,new_df], ignore_index=True)
-    professor_df = add_teacher_data_to_df(professor_df, teacher_dict) if teacher_dict['teacher name'][0] != np.nan else professor_df
+    professor_df = add_teacher_data_to_df(professor_df, teacher_dict) if teacher_dict['teacher name'][0] is not np.nan else professor_df
     return df, professor_df
 
 def extract_data_from_old_webpage(course_soup, course_information_list, df, url, professor_df):
@@ -559,7 +559,7 @@ def extract_data_from_old_webpage(course_soup, course_information_list, df, url,
     df = pd.concat([df, new_df], ignore_index=True)
 
     # 7. Update professor_df with teacher data
-    professor_df = add_teacher_data_to_df(professor_df, teacher_dict) if teacher_dict['teacher name'][0] != np.nan else professor_df
+    professor_df = add_teacher_data_to_df(professor_df, teacher_dict) if teacher_dict['teacher name'][0] is not np.nan else professor_df
 
     # 8. Return df and professor_df
     return df, professor_df
