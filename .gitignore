@@ -6,3 +6,6 @@ MiTSubjectScraper/__pycache__/
 
 # gecko driver
 geckodriver.log
+
+# DS Store
+*.DS_Store

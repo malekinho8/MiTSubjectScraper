@@ -3,9 +3,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import os
+from stats_utils import weighted_nanmedian, weighted_nanmean, weighted_nanstd
+
+# Use LaTeX settings for Matplotlib text rendering
+plt.rc('text', usetex=True)
+plt.rc('font', family='serif')
 
 # 0. Specify constants
-NUM_BINS = 40
+NUM_BINS = 50
 OUTPUT_FOLDER = 'example_outputs'
 # 0.1 Specify any additional filters
 filter_grad = True
@@ -47,25 +52,27 @@ df = df.loc[df['Number of Respondents'].values >= min_responses]
 df.reset_index()
 
 # 2. Specify which column you would like to plot
-var_name = 'Total Weekly Hours Spent (Avg)'
+var_name = 'Teacher Rating (Avg)'
 
 # 3. Plot the distribution of the variable of interest
 # 3.1 Access the data vector from the dataframe
 data_slice = np.array(df[var_name])
-# 3.1.1 Obtain the median of the data slice
-median = np.nanmedian(data_slice)
+# 3.1.1 Obtain stats for the data slice
+median = weighted_nanmedian(data_slice, weights=df['Number of Respondents'].values)
+mean = weighted_nanmean(data_slice, weights=df['Number of Respondents'].values)
+std = weighted_nanstd(data_slice, weights=df['Number of Respondents'].values)
 # 3.2 Use matplotlib to plot histogram
 fig = plt.figure(1)
 hist = plt.hist(data_slice,bins=NUM_BINS,weights=df['Number of Respondents'].values)
-plt.vlines([median],ymin=0,ymax=hist[0].max()*1.2,colors=['r'],linestyles=['dashed'],label=f'Median = {median}')
+plt.vlines([median],ymin=0,ymax=hist[0].max()*1.2,colors=['r'],linestyles=['dashed'],label=f'Median = {median:.2f}')
 plt.ylim([hist[0].min(), hist[0].max()*1.2])
-plt.title(f'Distribution of Values for {var_name}')
+plt.title(f'Distribution of Values for {var_name}\n$\mu$ = {mean:.2f} $\pm$ {std:.2f}')
 plt.legend()
 plt.tight_layout()
 plt.show(block=True)
 
 # save the figure as a png
-output_filename = f'distribution({var_name})[bins={NUM_BINS}].png'
+output_filename = f'distribution({var_name})[bins={NUM_BINS}-grad={filter_grad}].png'
 output_path = os.path.join(OUTPUT_FOLDER,output_filename)
 fig.savefig(output_path)
 
